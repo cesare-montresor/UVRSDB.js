@@ -1,0 +1,11 @@
+{
+	"sessions":[
+			{
+				"name": "YourServer",
+				"guildId": "24242523358937345545",
+				"clientId": "52353754524243243589",
+				"token": "your-token-goes-here"
+			}
+		]
+	}
+}
