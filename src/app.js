@@ -1,4 +1,4 @@
-const { Bot } = require("./bot.js")
+const { BotUniVR } = require("./bot.js")
 
 class App {
 
@@ -13,7 +13,7 @@ class App {
 
   
   constructor(){
-    this.bot = new Bot();
+    this.bot = new BotUniVR();
   }
   
 

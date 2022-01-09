@@ -4,6 +4,54 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { REST } = require('@discordjs/rest');
 const { Routes } = require('discord-api-types/v9');
 
+
+class Config
+{
+    // UniVR Bot
+
+    loadConfig(){
+        const fs = require('fs');
+        let rawdata = fs.readFileSync('configuration.json');
+        this.config = JSON.parse(rawdata);
+    }
+
+    saveConfig(){
+        const fs = require('fs');
+        let txt_config = JSON.stringify(this.config);
+        fs.writeFileSync('configuration.json',txt_config);
+    }    
+
+    getCategories(triennali, magistrali){
+        if(triennali === undefined){triennali = true;}
+        if(!magistrali === undefined){magistrali = true;}
+
+        this.loadConfig();
+        var categories = this.config['categories']
+        if ( triennali && magistrali ){ return categories; }
+        if (triennali){
+            return categories.filter(cat => cat['category']['group_category'] == 'T')
+        }
+        if (magistrali){
+            return categories.filter(cat => cat['category']['group_category'] == 'M')
+        }
+        return categories;
+    }
+
+    getCategoriesRoles(triennali, magistrali){
+        var cats = this.getCategories(triennali, magistrali);
+        var roles = cats.map( cat => cat["role"] );
+        return roles;
+    }
+
+    getCategoriesRolesIds(triennali, magistrali){
+        var roles = this.getCategoriesRoles(triennali, magistrali);
+        var roles_ids = roles.map( role =>  parseInt(role["id_role"]) );
+        return roles_ids;
+    }
+    
+}
+
+
 class Bot{
 
     //SETUP
@@ -11,29 +59,23 @@ class Bot{
         this.commands = {};
         this.buttons = {};
         this.selects = {};
-        this.config = new Config();
         
         // Create a new client instance
         this.client = new Client({ intents: [Intents.FLAGS.GUILDS] });
-        this.initEvents();
-        this.init();
     }
 
-    
-
-    initEvents(){
-        var this_bot = this;
-        this.client.once('ready', () => { this.onStart(this_bot) }); // When the client is ready, run this code (only once)
-        this.client.on('ready',  () => { this.onReady(this_bot) } ); // on: Login, ... 
+    registerEventSender(sender){
+        this.client.once('ready', () => { this.onStart(sender) }); // When the client is ready, run this code (only once)
+        this.client.on('ready',  () => { this.onReady(sender) } ); // on: Login, ... 
         this.client.on('interactionCreate', (interaction) => {
             if ( interaction.isCommand() ) {
-                this.onCommand(this_bot, interaction);
+                this.onCommand(sender, interaction);
             } else if ( interaction.isButton() ) {
-                this.onButton(this_bot, interaction);
+                this.onButton(sender, interaction);
             } else if ( interaction.isSelectMenu() ) {
-                this.onSelect(this_bot, interaction);
+                this.onSelect(sender, interaction);
             }else{
-                this.onInteraction(this_bot, interaction);
+                this.onInteraction(sender, interaction);
             }
         } );
     }
@@ -69,12 +111,12 @@ class Bot{
 
 
     // EVENTS
-    async onStart(this_bot){
-        console.log('Ready!'+this_bot);
+    async onStart(sender){
+        console.log('Ready!'+sender);
     }
 
-    async onReady(this_bot){
-        console.log('Logged in...'+this_bot);
+    async onReady(sender){
+        console.log('Logged in...'+sender);
     }
 
 
@@ -99,6 +141,11 @@ class Bot{
         return cmd;
     }
 
+    getCommand(name, raw=false){
+        if (raw === true){ return this.commands[name] }
+        return this.commands[name]["data"];
+    }
+
 
 
     // INTERACTIONS: BUTTONS
@@ -118,7 +165,13 @@ class Bot{
     addButton(name, description, style, callback){
         var button = this.makeButton(name, description, style);
         this.registerButton(button,callback);
+       
         return button;
+    }
+
+    getButton(name, raw=false){
+        if (raw === true){ return this.buttons[name] }
+        return this.buttons[name]["data"];
     }
 
     // INTERACTIONS: SELECT
@@ -140,174 +193,230 @@ class Bot{
         this.registerSelect(select,callback);
         return select;
     }
+    getSelect(name, raw=false){
+        if (raw === true){ return this.selects[name] }
+        return this.selects[name]["data"];
+    }
 
+   
     
 
     //INTERACTIONS: EVENT
-    async onCommand(this_bot, interaction) {
+    async onCommand(sender, interaction) {
         const { commandName } = interaction;
         console.log('commandName: ' + commandName);
         var command = this.commands[commandName];
         if ( command ){
             var callback = command['callback'];
-            await callback(this_bot, interaction);
+            await callback(sender, interaction);
         }else{
             await interaction.reply('Unknown command: ' + commandName);
         }
     }
 
-    async onButton(this_bot, interaction) {
+    async onButton(sender, interaction) {
         const { customId } = interaction;
         console.log('customId: ' + customId);
 
         var button = this.buttons[customId];
         if ( button ){
             var callback = button['callback'];
-            await callback(this_bot, interaction);
+            await callback(sender, interaction);
         }else{
             await interaction.reply('Unknown button: ' + customId);
         }
     }
 
-    async onSelect(this_bot, interaction) {
+    async onSelect(sender, interaction) {
         const { customId } = interaction;
         console.log('customId: ' + customId);
 
         var select = this.selects[customId];
         if ( select ){
             var callback = select['callback'];
-            await callback(this_bot, interaction);
+            await callback(sender, interaction);
         }else{
             await interaction.reply('Unknown select: ' + customId);
         }
     }
 
-    async onInteraction(this_bot, interaction) {
+    async onInteraction(sender, interaction) {
         console.log(interaction);
     }
 
+    // SEND
+    async channelSend(channel_id, message){
+        const channel = await this.client.channels.fetch(channel_id);
+        channel.send(message);
+    }
+
+    async userSend(user_id, message){
+        const user = await this.client.users.fetch(user_id);
+        user.send(message);
+    }
+
     
-    
+}
+
+
+
+
+
+
+
+
+
+class BotUniVR extends Bot
+{
+    //SETUP
+    constructor(){
+        super();
+
+        this.config = new Config();
+        this.init();
+    }
     //Init
     init(){
-        this.addCommand('corsi','Menu scielta corsis', this.showSceltaCorsi);
-        this.addCommand('ping','Replies with pong!', this.pong);
-        this.addCommand('server','Replies with server info!', this.serverStatus);
-        this.addCommand('user','Replies with user info!', this.userInfo); 
+        this.registerEventSender(this);
+        
+        //COMMANDS
+        this.addCommand('corsi', 'Menu scielta corsis', this.showSceltaCorsi);
+        this.addCommand('ping', 'Replies with pong!', this.pong);
+        this.addCommand('server', 'Replies with server info!', this.serverStatus);
+        this.addCommand('user', 'Replies with user info!', this.userInfo); 
+
+        //BUTTONS
+        this.addButton('btn_triennali','Corsi Triennali', 'SUCCESS', this.showTriennali);
+        this.addButton('btn_magistrali','Corsi Magistrali', 'SUCCESS', this.showMagistrali);
+        this.addButton('btn_extra','Altre attività', 'PRIMARY', this.showExtra);
+
+        //SELECTS
+        let roles_t = this.config.getCategoriesRoles(true, false);
+        this.addSelectRoles("select_triennali", "Corsi Triennali", roles_t, this.selectTriennali );
+        
+        let roles_m = this.config.getCategoriesRoles(false, true);
+        this.addSelectRoles("select_magistrali", "Corsi Magistrali", roles_m, this.selectMagistrali  );
+    
     }
 
-    //Commands exec
-    async pong(this_bot, interaction){ await interaction.reply('pong'); }
-    async serverStatus(this_bot, interaction){ await interaction.reply('server status'); }
-    async userInfo(this_bot, interaction){ await interaction.reply('user info'); }
-
-    // UI: BUTTON
-    async showSceltaCorsi(this_bot, interaction){
-        const btn_t = this_bot.addButton('btn_triennali','Scegli corsi Triennali', 'SUCCESS', this_bot.showTriennali);
-        const btn_m = this_bot.addButton('btn_magistrali','Scegli corsi Magistrali', 'SUCCESS', this_bot.showMagistrali);
-        const btn_e = this_bot.addButton('btn_extra','Scegli altre attività', 'PRIMARY', this_bot.showExtra);
-
-        const row = new MessageActionRow().addComponents(btn_t, btn_m, btn_e);
-
-        await interaction.reply({ content: 'Pong!', components: [row] });
-    }
-
-    async showTriennali(this_bot, interaction){
-        //TODO: pre-select user pre-existing roles.
-        var cats = this_bot.config.getCategories(true,false);
-        var options = cats.map( (cat) => { 
-                return {
-                    "label": ""+cat["role"]["name_role"],
-                    "value": ""+cat["role"]["id_role"],
-                    "emoji": ""+cat["role"]["emoji_role"]
-                }
+    
+    makeSelectRoles(customId, placeholder, roles){
+        let options = roles.map( (role) => { 
+                let option = {
+                    "label": ""+role["name_role"],
+                    "value": ""+role["id_role"],
+                    "emoji": ""+role["emoji_role"]
+                };
+                if (role["default"] === true ){option["default"]="true"}
+                return option;
             });
         options.push({"label":"None", "value":"-1"});
-        var select_t = this_bot.addSelect("select_triennali", "Seleziona corsi Triennali", options, this_bot.selectTriennali);
+        let select_t = this.makeSelect(customId, placeholder, options);
         select_t.setMaxValues(options.length);
+        return select_t;
+    }
+
+    addSelectRoles(customId, placeholder, roles, callback){
+        let select = this.makeSelectRoles(customId, placeholder, roles);
+        this.registerSelect(select, callback);
+    }
+  
+
+
+    //COMMANDS
+    async pong(sender, interaction){ await interaction.reply('pong'); }
+    async serverStatus(sender, interaction){ await interaction.reply('server status'); }
+    async userInfo(sender, interaction){ await interaction.reply('user info'); }
+    
+    //UI: MENU CORSI: show 3 buttons
+    async showSceltaCorsi(sender, interaction){
+        const select_t = sender.getSelect("select_triennali");
+        const select_m = sender.getSelect("select_magistrali");
+        const row_t = new MessageActionRow().addComponents(select_t);
+        const row_m = new MessageActionRow().addComponents(select_m);
+
+        /*
+        const btn_t = sender.getButton('btn_triennali');
+        const btn_m = sender.getButton('btn_magistrali');
+        const btn_e = sender.getButton('btn_extra');
+        
+        const row = new MessageActionRow().addComponents(btn_t, btn_m, btn_e);
+        */
+        await interaction.reply({ content: 'Seleziona la categoria', components: [row_t,row_m], ephemeral: true });
+    }
+
+    //UI: MENU CORSI: SELECT triennali
+    async showTriennali(sender, interaction){
+        var select_t = sender.getSelect("select_triennali");
         const row = new MessageActionRow().addComponents(select_t);
         await interaction.reply({ content: 'Menu corsi triennali', components: [row], ephemeral: true });
     }
 
-    async selectTriennali(this_bot, interaction){
-        var guild_roles = interaction.guild.roles.cache;
-        await interaction.deferReply();
+    //UI: MENU CORSI: SELECT magistrali
+    async showMagistrali(sender, interaction){
+        var select_m = sender.getSelect("select_magistrali");
+        const row = new MessageActionRow().addComponents(select_m);
+        await interaction.reply({ content: 'Menu corsi triennali', components: [row], ephemeral: true });
+    }
 
+    //UI: MENU CORSI: SELECTed some triennali
+    async selectTriennali(sender, interaction){
+        await interaction.deferReply({ ephemeral: true }); //Thinking ... 
+
+        var select_roles = sender.config.getCategoriesRolesIds(true,false);
+        var new_roles = interaction.values.map( value => parseInt(value) );
         
-        var cats = this_bot.config.getCategories(true,false);
+        await sender.updateRoles(interaction.guild, interaction.member, select_roles, new_roles );
+        await interaction.editReply({ content: 'Roles assigned!', ephemeral: true });
+    }
 
-        var role_ids_all = cats.map( cat => parseInt(cat["role"]["id_role"]) );        
-        var role_ids_user = interaction.member._roles.map( role_id => parseInt(role_id) );
-
-        var role_ids_selected = interaction.values.map( value => parseInt(value) );
-        role_ids_selected = role_ids_selected.filter( role_id => role_ids_all.indexOf(role_id) != -1 );
-
-        var role_ids_off = role_ids_all.filter( role_id => role_ids_selected.indexOf(role_id) == -1  );
-        role_ids_off = role_ids_off.filter( role_id => role_ids_user.indexOf(role_id) != -1 );
-
-        var role_ids_on = role_ids_selected.filter( role_id => role_ids_user.indexOf(role_id) );
+    //UI: MENU CORSI: SELECTed some magistrali
+    async selectMagistrali(sender, interaction){
+        await interaction.deferReply({ ephemeral: true }); //Thinking ... 
+        let select_roles = sender.config.getCategoriesRolesIds(false, true);
+        let new_roles = interaction.values.map( value => parseInt(value) );
         
-        var roles_off =  guild_roles.filter( role => role_ids_off.indexOf(role.id) != -1);
-        var roles_on =  guild_roles.filter( role => role_ids_on.indexOf(role.id) != -1);
-
-
-        await interaction.member.roles.remove(roles_off);
-        await interaction.member.roles.add(roles_on);
-
-        await interaction.editReply({ content: 'Work in progress... Roles assigned!', ephemeral: true });
-
-        console.log(interaction);
+        await sender.updateRoles(interaction.guild, interaction.member, select_roles, new_roles );
+        
+        await interaction.editReply({ content: 'Roles assigned!', ephemeral: true });
     }
 
 
-    async showMagistrali(this_bot, interaction){
-        await interaction.reply('buttonMagistrali');
+    // Utility: update roles "differentially" 
+    async updateRoles(guild, member, select_roles, new_roles ){
+        // get roles
+        let contains = (collection,element) => (collection.indexOf(element) != -1);
+        
+        let user_roles = member._roles.map( role_id => parseInt(role_id) );
+        
+        // validate roles
+        let new_roles_on = new_roles.filter( role_id =>  contains(select_roles,role_id) ); // new_roles on must exist within that "select"
+        let new_roles_off = select_roles.filter( role_id => !contains(new_roles_on,role_id) ); // new_roles_off, but not be new_roles on
+        
+        // compute roles "not yet OFF"
+        let role_ids_off = new_roles_off.filter( role_id => contains(user_roles,role_id)  ); 
+        // compute roles "not yet ON"
+        let role_ids_on = new_roles_on.filter( role_id => !contains(user_roles,role_id) );
+        
+        let guild_roles = Array.from( guild.roles._cache.values() );
+        
+        // perform OFF
+        let roles_off =  guild_roles.filter( role => contains( role_ids_off, parseInt(role.id) ));
+        for(const i in roles_off){ 
+            const role = roles_off[i];
+            await member.roles.remove(role); 
+        }
+        
+        // perform ON
+        let roles_on = guild_roles.filter( role => contains(role_ids_on, parseInt(role.id) ) );
+        for(const i in roles_on){
+            const role = roles_on[i];
+            await member.roles.add(role); 
+        }
     }
 
-    async showExtra(this_bot, interaction){
-        await interaction.reply('buttonExtra');
-    }
-
-
-
-
+    
 }
 
 
-class Config{
-    // UniVR Bot
-
-    loadConfig(){
-        const fs = require('fs');
-        let rawdata = fs.readFileSync('configuration.json');
-        this.config = JSON.parse(rawdata);
-    }
-
-    saveConfig(){
-        const fs = require('fs');
-        let txt_config = JSON.stringify(this.config);
-        fs.writeFileSync('configuration.json',txt_config);
-    }    
-
-    getCategories(triennali, magistrali){
-        if(triennali === undefined){triennali = true;}
-        if(!magistrali === undefined){magistrali = true;}
-
-        this.loadConfig();
-        var categories = this.config['categories']
-        if ( triennali && magistrali ){ return categories; }
-        if (triennali){
-            return categories.filter(cat => cat['category']['group_category'] == 'T')
-        }
-        if (magistrali){
-            return categories.filter(cat => cat['category']['group_category'] == 'M')
-        }
-        return categories;
-    }
-
-
-        
-}
-
-
-module.exports = { Bot }
+module.exports = { BotUniVR, Bot }
